@@ -9,8 +9,16 @@ When you have Python and pip installed, you can **install the MongoDB-Connector*
 pip install pymongo
 ```
 
-Additionally, you have to copy the **configuration file** `config.default.ini` in the jobs folder and rename it to `config.ini`. 
-In this file, you must modify the values according to your needs. 
+Additionally, you have to copy the **configuration file** `config.default.ini` in the jobs folder and rename it to `config.ini`.
+In this file, you must modify the values according to your needs.
+
+For OpenAlex jobs, set `OpenAlex.ApiKey` to an API key from OpenAlex. Keep this
+key only in `jobs/config.ini`, which is ignored by Git. The importer uses
+cursor pagination with a local checkpoint at
+`jobs/.openalex-import-checkpoint.json`; after a transient interruption,
+rerunning `python jobs/import_data.py` resumes from the last completed page.
+Use `python jobs/import_data.py --reset-checkpoint` only when you intentionally
+want to start the cursor from the beginning.
 
 
 ## Setup the queue job feature

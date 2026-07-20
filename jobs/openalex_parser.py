@@ -9,10 +9,14 @@ from Levenshtein import ratio
 
 from datetime import datetime
 import html
+import json
+from pathlib import Path
 from pprint import pprint
 
 
 class OpenAlexParser():
+    IMPORT_CHECKPOINT_VERSION = 1
+
     def __init__(self, ignore_duplicates=False) -> None:
         self.TYPES = {
             "book-section": "chapter",
@@ -58,6 +62,18 @@ class OpenAlexParser():
 
         self.inst_id = config['OpenAlex']['Institution'].upper()
         self.startyear = config['DEFAULT']['StartYear']
+        api_key = config['OpenAlex'].get('ApiKey', fallback='').strip() or None
+
+        checkpoint_value = config['OpenAlex'].get(
+            'ImportCheckpoint',
+            fallback='.openalex-import-checkpoint.json',
+        ).strip()
+        self.import_checkpoint_path = None
+        if checkpoint_value:
+            checkpoint_path = Path(checkpoint_value)
+            self.import_checkpoint_path = (
+                checkpoint_path if checkpoint_path.is_absolute() else Path(path) / checkpoint_path
+            )
 
         # set up database connection
         client = MongoClient(config['Database']['Connection'])
@@ -65,7 +81,9 @@ class OpenAlexParser():
 
 
         # set up OpenAlex
-        self.openalex = OpenAlex(config['DEFAULT'].get('AdminMail'))
+        self.openalex = OpenAlex(config['DEFAULT'].get('AdminMail'), api_key=api_key)
+        self._person_lookup_cache = {}
+        self._journal_cache = {}
         
         self.possible_dupl = []
         if not ignore_duplicates:
@@ -76,14 +94,97 @@ class OpenAlexParser():
             self.possible_dupl = [
                 (i['_id'], i['title']) for i in possible_dupl
             ]
+
+    def _default_work_filters(self):
+        return {
+            "from_publication_date": self.startyear + "-01-01",
+            "institutions.id": self.inst_id,
+            "has_doi": 'true'
+        }
+
+    def _checkpoint_metadata(self, filters):
+        return {
+            'version': self.IMPORT_CHECKPOINT_VERSION,
+            'institution': self.inst_id,
+            'startyear': self.startyear,
+            'filters': filters,
+        }
+
+    def _load_import_checkpoint(self, filters):
+        if self.import_checkpoint_path is None or not self.import_checkpoint_path.exists():
+            return None
+
+        try:
+            with self.import_checkpoint_path.open('r', encoding='utf-8') as handle:
+                checkpoint = json.load(handle)
+        except (OSError, json.JSONDecodeError) as exc:
+            print(f"Ignoring unreadable import checkpoint {self.import_checkpoint_path}: {exc}")
+            return None
+
+        metadata = self._checkpoint_metadata(filters)
+        if any(checkpoint.get(key) != value for key, value in metadata.items()):
+            print(
+                f"Ignoring import checkpoint {self.import_checkpoint_path}: "
+                "its institution, start year, or filters do not match this import."
+            )
+            return None
+
+        cursor = checkpoint.get('cursor')
+        if not isinstance(cursor, str) or not cursor:
+            print(f"Ignoring import checkpoint {self.import_checkpoint_path}: no valid cursor.")
+            return None
+        return cursor
+
+    def _save_import_checkpoint(self, filters, next_cursor):
+        if self.import_checkpoint_path is None:
+            return
+
+        if not next_cursor:
+            try:
+                self.import_checkpoint_path.unlink()
+            except FileNotFoundError:
+                pass
+            return
+
+        checkpoint = self._checkpoint_metadata(filters)
+        checkpoint.update({
+            'cursor': next_cursor,
+            'updated': datetime.now().isoformat(timespec='seconds'),
+        })
+        self.import_checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
+        temporary_path = self.import_checkpoint_path.with_suffix(
+            self.import_checkpoint_path.suffix + '.tmp'
+        )
+        with temporary_path.open('w', encoding='utf-8') as handle:
+            json.dump(checkpoint, handle, ensure_ascii=False, sort_keys=True)
+            handle.write('\n')
+        temporary_path.replace(self.import_checkpoint_path)
+
+    def reset_import_checkpoint(self):
+        if self.import_checkpoint_path is None:
+            return False
+        try:
+            self.import_checkpoint_path.unlink()
+        except FileNotFoundError:
+            return False
+        return True
             
 
 
     def getUserId(self, name, orcid=None):
         if orcid:
+            orcid_key = ('orcid', orcid)
+            if orcid_key in self._person_lookup_cache:
+                return self._person_lookup_cache[orcid_key]
             user = self.osiris['persons'].find_one({'orcid': orcid})
             if user:
-                return user['username']
+                username = user['username']
+                self._person_lookup_cache[orcid_key] = username
+                return username
+
+        name_key = ('name', name.last, name.first)
+        if name_key in self._person_lookup_cache:
+            return self._person_lookup_cache[name_key]
         user = self.osiris['persons'].find_one(
             {'$or': [
                 {'last': name.last, 'first': {'$regex': '^'+name.first+'.*'}},
@@ -92,9 +193,9 @@ class OpenAlexParser():
         )
         # print(user)
         # exit()
-        if user:
-            return user['username']
-        return None
+        username = user['username'] if user else None
+        self._person_lookup_cache[name_key] = username
+        return username
 
     def getAbstract(self, inverted_abstract):
         if not inverted_abstract: return None
@@ -108,27 +209,75 @@ class OpenAlexParser():
         return abstract
 
     def getJournal(self, issn):
-        journal = self.osiris['journals'].find_one({'issn': {'$in': issn}})
-        if journal:
-            return journal
+        if isinstance(issn, str):
+            issns = [issn]
+        elif isinstance(issn, (list, tuple)):
+            issns = [value for value in issn if value]
+        else:
+            issns = []
 
-        # if journal does not exist: create one
-        source = self.openalex.get_single_venue(issn[-1], "issn")
-        if not source or source['type'] != 'journal':
+        if not issns:
             return None
 
+        for value in issns:
+            if value in self._journal_cache:
+                return self._journal_cache[value]
+
+        journal = self.osiris['journals'].find_one({'issn': {'$in': issns}})
+        if journal:
+            self._cache_journal(journal, issns)
+            return journal
+
+        # If the journal does not exist, retrieve its metadata from OpenAlex.
+        # This lookup is supplementary: a temporary venue API failure must not
+        # abort importing the publication itself.
+        try:
+            source = self.openalex.get_single_venue(issns[-1], "issn")
+        except Exception as exc:
+            print(
+                f"Could not retrieve OpenAlex venue for ISSN {issns[-1]}: {exc}. "
+                "Importing publication without journal metadata."
+            )
+            return None
+
+        if not isinstance(source, dict) or source.get('type') != 'journal':
+            return None
+
+        journal_name = source.get('display_name') or source.get('title')
+        if not journal_name:
+            print(f"OpenAlex venue for ISSN {issns[-1]} has no display name; skipped journal creation.")
+            return None
+
+        source_issns = source.get('issn') or issns
+        if isinstance(source_issns, str):
+            source_issns = [source_issns]
+
+        publisher = source.get('host_organization_name') or source.get('publisher')
+        if isinstance(publisher, dict):
+            publisher = publisher.get('display_name') or publisher.get('name')
+
         new_journal = {
-            'journal': source['display_name'],
-            'abbr': source['abbreviated_title'],
-            'publisher': source['host_organization_name'],
-            'issn': source['issn'],
-            'oa': source['is_oa'],
-            'openalex': source['id'].replace('https://openalex.org/', '')
+            'journal': journal_name,
+            # OpenAlex does not provide abbreviated_title for every venue.
+            'abbr': source.get('abbreviated_title') or journal_name,
+            'publisher': publisher,
+            'issn': source_issns,
+            'oa': bool(source.get('is_oa', False)),
+            'openalex': str(source.get('id') or '').replace('https://openalex.org/', '')
         }
         new_doc = self.osiris['journals'].insert_one(new_journal)
 
         new_journal['_id'] = new_doc.inserted_id
+        self._cache_journal(new_journal, issns)
         return new_journal
+
+    def _cache_journal(self, journal, requested_issns):
+        journal_issns = journal.get('issn') or []
+        if isinstance(journal_issns, str):
+            journal_issns = [journal_issns]
+        for value in list(requested_issns) + list(journal_issns):
+            if value:
+                self._journal_cache[value] = journal
 
 
 
@@ -235,8 +384,8 @@ class OpenAlexParser():
         
         journal = None
         if loc and loc.get('type') == 'journal':
-            element['location'] = loc['display_name']
-            journal = self.getJournal(loc['issn'])
+            element['location'] = loc.get('display_name')
+            journal = self.getJournal(loc.get('issn'))
             if journal:
                 element.update({
                         'volume': work['biblio']['volume'],
@@ -249,7 +398,7 @@ class OpenAlexParser():
                     element['epub'] = True
 
         if (typ == 'article'):
-            if not loc or not loc['issn']:
+            if not loc or not loc.get('issn'):
                 element['subtype'] = 'magazine'
             elif loc.get('type')== 'repository':
                 element['subtype'] = 'preprint'
@@ -295,29 +444,38 @@ class OpenAlexParser():
     
     def get_works_dois(self, filters=None):
         if not filters:
-            filters = {
-                "from_publication_date": self.startyear + "-01-01",
-                "institutions.id": self.inst_id,
-                "has_doi": 'true'
-            }
-        pages_of_works = self.openalex.get_list_of_works(filters=filters, pages=None)
+            filters = self._default_work_filters()
+        pages_of_works = self.openalex.get_list_of_works(
+            filters=filters,
+            pages=None,
+            per_page=100,
+        )
         for page in pages_of_works:
             for work in page['results']:
                 yield work['doi']
                     
-    def get_works(self, filters=None):
+    def get_works(self, filters=None, checkpoint=False):
         # NOPE: use created_date and updated_date to filter
         # Not possible, needs payed version
 
         if not filters:
-            filters = {
-                "from_publication_date": self.startyear + "-01-01",
-                "institutions.id": self.inst_id,
-                "has_doi": 'true'
-            }
+            filters = self._default_work_filters()
 
+        resume_cursor = self._load_import_checkpoint(filters) if checkpoint else None
+        if resume_cursor:
+            print(f"Resuming OpenAlex import from checkpoint {self.import_checkpoint_path}.")
 
-        pages_of_works = self.openalex.get_list_of_works(filters=filters, pages=None)
+        on_page_complete = None
+        if checkpoint:
+            on_page_complete = lambda next_cursor: self._save_import_checkpoint(filters, next_cursor)
+
+        pages_of_works = self.openalex.get_list_of_works(
+            filters=filters,
+            pages=None,
+            per_page=100,
+            cursor=resume_cursor,
+            on_page_complete=on_page_complete,
+        )
 
         i = 0
         for page in pages_of_works:
@@ -331,7 +489,7 @@ class OpenAlexParser():
                     print(f'Error with DOI {work["doi"]}')
                     print(e)
                     continue
-        print(f'--- Finished. Imported {i} documents.')
+        print(f'--- Finished. Prepared {i} documents.')
     
     def getHistory(self, element):
         return {
@@ -347,13 +505,26 @@ class OpenAlexParser():
             self.osiris['queue'].insert_one(element)
     
     def importJob(self):
-        for element in self.get_works():
-            if element.get('duplicate'):
-                print(f'Activity might have a duplicate (DOI {element["doi"]}) and was omitted.')
-                continue
-            element['imported'] = datetime.now().date().isoformat()
-            element['history'] = [self.getHistory(element)]
-            self.osiris['activities'].insert_one(element)
+        inserted = 0
+        duplicates = 0
+        completed = False
+        try:
+            for element in self.get_works(checkpoint=True):
+                if element.get('duplicate'):
+                    duplicates += 1
+                    print(f'Activity might have a duplicate (DOI {element["doi"]}) and was omitted.')
+                    continue
+                element['imported'] = datetime.now().date().isoformat()
+                element['history'] = [self.getHistory(element)]
+                self.osiris['activities'].insert_one(element)
+                inserted += 1
+            completed = True
+        finally:
+            state = 'finished' if completed else 'stopped before completion'
+            print(
+                f'--- OpenAlex import {state}: inserted {inserted} documents, '
+                f'skipped {duplicates} likely duplicates.'
+            )
 
 
 if __name__ == '__main__':

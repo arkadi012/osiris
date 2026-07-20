@@ -49,6 +49,7 @@ function sendMail(
             $Mailer->SMTPSecure = PHPMailer\PHPMailer\PHPMailer::ENCRYPTION_STARTTLS;
         } else { // none
             $Mailer->SMTPSecure = false;
+            $Mailer->SMTPAutoTLS = false;
         }
     }
 

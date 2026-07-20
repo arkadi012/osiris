@@ -17,6 +17,8 @@ services:
     environment:
       - COMPOSER_ALLOW_SUPERUSER=1
       - OSIRIS_DB_HOST=mongo
+      - OSIRIS_PORTFOLIO_API_URL=http://app
+      - PHP_CLI_SERVER_WORKERS=4
     command: >
       sh -c "php -S 0.0.0.0:80 -t /var/www/html"
 

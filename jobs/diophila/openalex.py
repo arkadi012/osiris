@@ -1,5 +1,5 @@
 """This module wraps the OpenAlex API."""
-from typing import Optional, Iterable, List
+from typing import Callable, Optional, Iterable, List
 
 from diophila.api_caller import APICaller
 from diophila.endpoints import Authors, Concepts, Institutions, Venues, Works
@@ -8,17 +8,21 @@ from diophila.endpoints import Authors, Concepts, Institutions, Venues, Works
 class OpenAlex:
     """This class wraps the OpenAlex API."""
 
-    def __init__(self, email: Optional[str] = None) -> object:
+    def __init__(self,
+                 email: Optional[str] = None,
+                 api_key: Optional[str] = None) -> object:
         """ Init wrapper, preferably with an email to get into the polite pool.
 
         Args:
             email (Optional[str]): email address of the user that will be added
                         in the request header to get into the polite pool, optional.
+            api_key (Optional[str]): OpenAlex API key, optional for callers that
+                        do not require authenticated API access.
 
         Returns:
             object wrapping the OpenAlex API.
         """
-        self._api_caller = APICaller("https://api.openalex.org", email)
+        self._api_caller = APICaller("https://api.openalex.org", email, api_key)
 
     # Get single entity: Random
     def get_random_author(self) -> dict:
@@ -268,8 +272,8 @@ class OpenAlex:
              If you search for a multiple-word phrase, OpenAlex will treat each word separately.
              If you only want results matching the exact phrase, enclose it in double quotes.
             sort (Optional[dict]): dictionary with properties to sort entities, optional.
-            per_page (Optional[int]): number of entities per page, defaults to 25.
-                                      Needs to be between [1;200]
+            per_page (Optional[int]): number of entities per page, defaults to 100.
+                                      Needs to be between [1;100].
             pages (Optional[List[int]]): list of page numbers to query from API, optional.
                 If empty, cursor pagination will be used.
 
@@ -296,8 +300,8 @@ class OpenAlex:
              If you search for a multiple-word phrase, OpenAlex will treat each word separately.
              If you only want results matching the exact phrase, enclose it in double quotes.
             sort (Optional[dict]): dictionary with properties to sort entities, optional.
-            per_page (Optional[int]): number of entities per page, defaults to 25.
-                                      Needs to be between [1;200]
+            per_page (Optional[int]): number of entities per page, defaults to 100.
+                                      Needs to be between [1;100].
             pages (Optional[List[int]]): list of page numbers to query from API, optional.
                 If empty, cursor pagination will be used.
 
@@ -324,8 +328,8 @@ class OpenAlex:
              If you search for a multiple-word phrase, OpenAlex will treat each word separately.
              If you only want results matching the exact phrase, enclose it in double quotes.
             sort (Optional[dict]): dictionary with properties to sort entities, optional.
-            per_page (Optional[int]): number of entities per page, defaults to 25.
-                                      Needs to be between [1;200]
+            per_page (Optional[int]): number of entities per page, defaults to 100.
+                                      Needs to be between [1;100].
             pages (Optional[List[int]]): list of page numbers to query from API, optional.
                 If empty, cursor pagination will be used.
 
@@ -352,8 +356,8 @@ class OpenAlex:
              If you search for a multiple-word phrase, OpenAlex will treat each word separately.
              If you only want results matching the exact phrase, enclose it in double quotes.
             sort (Optional[dict]): dictionary with properties to sort entities, optional.
-            per_page (Optional[int]): number of entities per page, defaults to 25.
-                                      Needs to be between [1;200]
+            per_page (Optional[int]): number of entities per page, defaults to 100.
+                                      Needs to be between [1;100].
             pages (Optional[List[int]]): list of page numbers to query from API, optional.
                 If empty, cursor pagination will be used.
 
@@ -370,7 +374,9 @@ class OpenAlex:
                           search: Optional[str] = None,
                           sort: Optional[dict] = None,
                           per_page: Optional[int] = None,
-                          pages: Optional[List[int]] = None) -> Iterable[dict]:
+                          pages: Optional[List[int]] = None,
+                          cursor: Optional[str] = None,
+                          on_page_complete: Optional[Callable[[Optional[str]], None]] = None) -> Iterable[dict]:
         """ Get list of works.
 
         Args:
@@ -380,10 +386,13 @@ class OpenAlex:
              If you search for a multiple-word phrase, OpenAlex will treat each word separately.
              If you only want results matching the exact phrase, enclose it in double quotes.
             sort (Optional[dict]): dictionary with properties to sort entities, optional.
-            per_page (Optional[int]): number of entities per page, defaults to 25.
-                                      Needs to be between [1;200]
+            per_page (Optional[int]): number of entities per page, defaults to 100.
+                                      Needs to be between [1;100].
             pages (Optional[List[int]]): list of page numbers to query from API, optional.
                 If empty, cursor pagination will be used.
+            cursor (Optional[str]): cursor from a previous cursor-paginated request.
+            on_page_complete: called with the next cursor after the consumer has
+                fully processed a page.
 
         Returns:
             Generator, each item a dict from JSON representing a (partial) list of works.
@@ -392,7 +401,9 @@ class OpenAlex:
                                                 search=search,
                                                 sort=sort,
                                                 per_page=per_page,
-                                                pages=pages)
+                                                pages=pages,
+                                                cursor=cursor,
+                                                on_page_complete=on_page_complete)
 
     # Convenience method to retrieve works referenced by another entity
     def get_works_by_api_url(self, works_api_url:str,
@@ -402,8 +413,8 @@ class OpenAlex:
 
         Args:
             works_api_url (str): reference to a list of works connected to another entity.
-            per_page (Optional[int]): number of entities per page, defaults to 25.
-                Needs to be between [1;200].
+            per_page (Optional[int]): number of entities per page, defaults to 100.
+                Needs to be between [1;100].
             pages (Optional[List[int]]): list of page numbers to query from API, optional.
                 If empty, cursor pagination will be used.
 

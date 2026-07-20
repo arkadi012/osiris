@@ -1,5 +1,5 @@
 """This module wraps all endpoints of the OpenAlex API and their parameters."""
-from typing import Optional, List, Iterable
+from typing import Callable, Optional, List, Iterable
 
 
 class _Endpoint:
@@ -127,7 +127,9 @@ class _Endpoint:
                  search: Optional[str] = None,
                  sort: Optional[dict] = None,
                  per_page: Optional[int] = None,
-                 pages: Optional[List[int]] = None) -> Iterable[dict]:
+                 pages: Optional[List[int]] = None,
+                 cursor: Optional[str] = None,
+                 on_page_complete: Optional[Callable[[Optional[str]], None]] = None) -> Iterable[dict]:
         """ Get list of entities.
 
         Args:
@@ -137,10 +139,13 @@ class _Endpoint:
              If you search for a multiple-word phrase, OpenAlex will treat each word separately.
              If you only want results matching the exact phrase, enclose it in double quotes.
             sort (Optional[dict]): dictionary with properties to sort entities, optional.
-            per_page (Optional[int]): number of entities per page. Needs to be in [1;200].
-                                      Defaults to 25.
+            per_page (Optional[int]): number of entities per page. Needs to be in [1;100].
+                                      Defaults to 100.
             pages (Optional[List[int]]): list of page numbers to query from API, optional.
                 If empty, cursor pagination will be used.
+            cursor (Optional[str]): cursor from a previous cursor-paginated request.
+            on_page_complete: called with the next cursor after the consumer has
+                fully processed a page.
 
         Returns:
             Generator, each item a dict from JSON representing a (partial) list of entities.
@@ -156,7 +161,14 @@ class _Endpoint:
                   'search': search,
                   'sort': self.__build_sort_param_for_list(sort, is_search)}
 
-        return self.api_caller.get_all(self.name, params, per_page, pages)
+        return self.api_caller.get_all(
+            self.name,
+            params,
+            per_page,
+            pages,
+            cursor,
+            on_page_complete,
+        )
 
     # --------------------------------------------------------------------------
     # ----------------------------- HELPER METHODS -----------------------------

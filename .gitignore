@@ -12,6 +12,7 @@ css/*zip
 settings.json
 CONFIG.php
 jobs/config.ini
+jobs/.openalex-import-checkpoint.json*
 *.pyc
 composer.lock
 upload.sh

@@ -28,8 +28,16 @@ class Portfolio extends Settings
         if (isset($_GET['lang']) && in_array($_GET['lang'], ['en', 'de'])) {
             $this->lang = $_GET['lang'];
         }
-        $this->apipath = ($_SERVER['SERVER_NAME'] ?? $_SERVER['HTTP_HOST']) . ROOTPATH . '/portfolio';
-        $this->apipath = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https://' : 'http://') . $this->apipath;
+        $apiBaseUrl = rtrim((string) getenv('OSIRIS_PORTFOLIO_API_URL'), '/');
+        if ($apiBaseUrl !== '') {
+            $this->apipath = $apiBaseUrl . ROOTPATH . '/portfolio';
+        } else {
+            $host = !empty($_SERVER['SERVER_NAME'])
+                ? $_SERVER['SERVER_NAME']
+                : ($_SERVER['HTTP_HOST'] ?? 'localhost');
+            $isHttps = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off';
+            $this->apipath = ($isHttps ? 'https://' : 'http://') . $host . ROOTPATH . '/portfolio';
+        }
 
         // basepath for links depends on portfolio settings
         if ($this->preview) {
