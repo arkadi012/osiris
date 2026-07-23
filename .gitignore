@@ -11,11 +11,14 @@ css/*zip
 .htaccess
 settings.json
 CONFIG.php
+
 jobs/config.ini
 jobs/.openalex-import-checkpoint.json*
+
+/private/
 *.pyc
 composer.lock
 upload.sh
 .DS_Store
 *conflicted copy*.*
-dump
+/dump/

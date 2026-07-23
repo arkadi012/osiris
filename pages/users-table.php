@@ -76,6 +76,8 @@ if ($active('keywords')) {
                 <th><?= lang('ORCID', 'ORCID') ?></th>
                 <th><?= lang('Username', 'Kürzel') ?></th>
                 <th><?= $keyword_name ?></th>
+                <th><?= lang('Roles', 'Rollen') ?></th>
+                <th><?= lang('TIMAS status', 'TIMAS-Status') ?></th>
             </thead>
             <tbody>
 
@@ -254,19 +256,44 @@ if ($active('keywords')) {
         {
             title: lang('Roles', 'Rollen'),
             'key': 'roles'
+        },
+        {
+            title: lang('TIMAS status', 'TIMAS-Status'),
+            'key': 'timas_status'
         }
     ]
 
     var dataTable;
     const activeFilters = $('#active-filters')
+    const timasRefreshInterval = 30000
+    let timasRefreshPending = false
+    let timasRefreshTimer = null
+    const timasStatusLabels = {
+        anwesend: lang('Present', 'Anwesend'),
+        homeoffice: lang('Home office', 'Homeoffice'),
+        abwesend: lang('Absent', 'Abwesend'),
+        unbekannt: lang('Unknown TIMAS status', 'Unbekannter TIMAS-Status'),
+        unmatched: lang('No TIMAS match', 'Keine TIMAS-Zuordnung')
+    }
     $(document).ready(function() {
-        dataTable = $('#user-table').DataTable({
+        const userTable = $('#user-table')
+        userTable.on('preXhr.dt.timasRefresh', function() {
+            timasRefreshPending = true
+        })
+        userTable.on('xhr.dt.timasRefresh', function() {
+            timasRefreshPending = false
+            scheduleTimasRefresh()
+        })
+
+        dataTable = userTable.DataTable({
             "ajax": {
                 "url": ROOTPATH + '/api/users',
                 "data": {
                     table: true,
                     subtitle: 'position'
                 },
+                cache: false,
+                timeout: 15000,
                 dataSrc: 'data'
             },
             deferRender: true,
@@ -431,6 +458,28 @@ if ($active('keywords')) {
                     title: '<?= lang('Roles', 'Rollen') ?>',
                     visible: false,
                     defaultContent: ''
+                },
+                {
+                    target: 16,
+                    data: 'timas_status',
+                    title: '<?= lang('TIMAS status', 'TIMAS-Status') ?>',
+                    className: 'status-indicator all',
+                    searchable: false,
+                    orderable: false,
+                    defaultContent: 'unmatched',
+                    render: function(data, type) {
+                        return type === 'display' ? '' : data;
+                    },
+                    createdCell: function(td, cellData) {
+                        const status = Object.prototype.hasOwnProperty.call(timasStatusLabels, cellData) ?
+                            cellData : 'unmatched';
+                        const label = timasStatusLabels[status];
+
+                        td.classList.add('timas-status-' + status);
+                        td.setAttribute('role', 'img');
+                        td.setAttribute('aria-label', 'TIMAS: ' + label);
+                        td.setAttribute('title', label);
+                    }
                 }
             ],
             "order": [
@@ -453,6 +502,24 @@ if ($active('keywords')) {
             filterUsers(document.getElementById(hash.topics + '-btn'), hash.topics, 5)
         }
     });
+
+
+    function scheduleTimasRefresh() {
+        if (timasRefreshTimer !== null) {
+            window.clearTimeout(timasRefreshTimer)
+        }
+        timasRefreshTimer = window.setTimeout(refreshTimasStatuses, timasRefreshInterval)
+    }
+
+
+    function refreshTimasStatuses() {
+        if (!dataTable || timasRefreshPending) {
+            scheduleTimasRefresh()
+            return
+        }
+
+        dataTable.ajax.reload(null, false)
+    }
 
 
     function filterUsers(btn, attr = null, column = 2) {

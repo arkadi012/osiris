@@ -540,6 +540,15 @@ Route::get('/api/users', function () {
         die;
     }
 
+    $timasStatuses = [];
+    if (isset($_GET['table'])) {
+        require_once BASEPATH . '/php/TimasStatusMatcher.php';
+        $timasMatcher = new TimasStatusMatcher(
+            BASEPATH . '/private/json/snapshot_test.json'
+        );
+        $timasStatuses = $timasMatcher->matchPersons($result);
+    }
+
     $topicsEnabled = $Settings->featureEnabled('topics') && $osiris->topics->count() > 0;
     $table = [];
     foreach ($result as $user) {
@@ -595,6 +604,7 @@ Route::get('/api/users', function () {
             }
             $table[] = $entry;
         } else {
+            $timasStatus = $timasStatuses[$user['username']]['status'] ?? 'unmatched';
             $table[] = [
                 'id' => strval($user['_id']),
                 'username' => $user['username'],
@@ -627,6 +637,7 @@ Route::get('/api/users', function () {
                 'topics' => $user['topics'] ?? array(),
                 'keywords' => $user['keywords'] ?? array(),
                 'roles' => $user['roles'] ?? array(),
+                'timas_status' => $timasStatus,
             ];
         }
     }

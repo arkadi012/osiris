@@ -26,6 +26,7 @@
      background: white;
      display: flex;
      align-items: center;
+     overflow: hidden;
  }
 
  .table.cards tbody tr td {
@@ -66,6 +67,34 @@
      text-align: center;
      padding: 2rem;
  }
+
+/* Full-height TIMAS status indication on the card's right edge. */
+.table.cards tbody tr td.status-indicator {
+    width: 1.5rem;
+    min-width: 1.5rem;
+    align-self: stretch;
+    flex: 0 0 1.5rem;
+    padding: 0;
+    background: var(--status-color, #c0c0c0);
+    box-shadow: inset 1px 0 0 rgba(0, 0, 0, 0.12);
+}
+
+.table.cards tbody tr td.timas-status-anwesend {
+    --status-color: #00ff00;
+}
+
+.table.cards tbody tr td.timas-status-homeoffice {
+    --status-color: #ff9900;
+}
+
+.table.cards tbody tr td.timas-status-abwesend {
+    --status-color: #ffffff;
+}
+
+.table.cards tbody tr td.timas-status-unbekannt,
+.table.cards tbody tr td.timas-status-unmatched {
+    --status-color: #c0c0c0;
+}
 
  @media (min-width: 768px) {
      .table.cards tbody tr {
