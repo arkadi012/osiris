@@ -408,10 +408,18 @@ $numbers = $data['numbers'] ?? [
                                 <h6 class="m-0 mb-5"><?= lang('Filter by year', 'Nach Jahr filtern') ?></h6>
                                 <div class="datatable-filter mb-20">
                                     <?php
-                                    $currentYear = (int)date('Y');
-                                    for ($year = $currentYear; $year >= $currentYear - 10; $year--) { ?>
-                                        <a href="#" class="filter-item" data-value="<?= $year ?>" data-column="year">
-                                            <?= $year ?>
+                                    $publicationYears = $osiris->activities->distinct('year', [
+                                        'type' => 'publication',
+                                        'hide' => ['$ne' => true],
+                                    ]);
+                                    $publicationYears = array_values(array_filter(
+                                        DB::doc2Arr($publicationYears),
+                                        'is_numeric'
+                                    ));
+                                    rsort($publicationYears, SORT_NUMERIC);
+                                    foreach ($publicationYears as $year) { ?>
+                                        <a href="#" class="filter-item" data-value="<?= (int)$year ?>" data-column="year">
+                                            <?= (int)$year ?>
                                         </a>
                                     <?php } ?>
                                 </div>

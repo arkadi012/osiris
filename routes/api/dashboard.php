@@ -1107,6 +1107,32 @@ Route::get('/api/dashboard/author-network', function () {
     $scientist = $_GET['user'] ?? $_SESSION['username'] ?? '';
     $selectedUser = $osiris->persons->findone(['username' => $scientist]);
     $userUnits = array_column(DB::doc2Arr($selectedUser['units']), 'unit');
+
+    // Legacy publications may not have author-level units. Keep publication-time
+    // units when available and use the person's current scientific units only as
+    // a fallback so the network can still resolve department colors and labels.
+    $personUnits = [];
+    $persons = $osiris->persons->find(
+        ['username' => ['$ne' => null]],
+        ['projection' => ['username' => 1, 'units' => 1]]
+    );
+    foreach ($persons as $person) {
+        $username = (string)($person['username'] ?? '');
+        if ($username === '') continue;
+
+        $units = [];
+        foreach (DB::doc2Arr($person['units'] ?? []) as $membership) {
+            $membership = DB::doc2Arr($membership);
+            if (!($membership['scientific'] ?? false)) continue;
+            if (empty($membership['unit'])) continue;
+            $units[] = $membership['unit'];
+        }
+        if (empty($units)) continue;
+
+        $units = array_values(array_unique($units));
+        $personUnits[$username] = $units;
+        $personUnits[strtolower($username)] = $units;
+    }
     // generate graph json
     $labels = [];
     $combinations = [];
@@ -1143,11 +1169,14 @@ Route::get('/api/dashboard/author-network', function () {
             if (empty($a['user'])) continue;
             if (!($a['aoi'] ?? false)) continue;
             $id = $a['user'];
-            if (!empty($depts)) {
-                if (empty($a['units'])) continue;
-                if (empty(array_intersect(DB::doc2Arr($a['units']), $depts))) continue;
+            $authorUnits = DB::doc2Arr($a['units'] ?? []);
+            if (empty($authorUnits)) {
+                $authorUnits = $personUnits[$id] ?? $personUnits[strtolower($id)] ?? [];
             }
-            // dump($a['units']);
+            if (!empty($depts)) {
+                if (empty($authorUnits)) continue;
+                if (empty(array_intersect($authorUnits, $depts))) continue;
+            }
             if (array_key_exists($id, $labels)) {
                 // $name = $labels[$id]['name'];
                 $labels[$id]['count']++;
@@ -1155,7 +1184,7 @@ Route::get('/api/dashboard/author-network', function () {
                 $name = Document::abbreviateAuthor($a['last'], $a['first'] ?? null, true, ' ');
                 // get top level unit
                 $units = [];
-                foreach ($a['units'] as $unit) {
+                foreach ($authorUnits as $unit) {
                     // get unit on 1st level
                     $p = $Groups->getUnitParent($unit, 1);
                     if (!empty($p)) {
