@@ -742,7 +742,7 @@ Route::get('/portfolio/(unit|person|project|topic)/([^/]*)/(publications|activit
         $filter = [
             'topics' => $id,
             'hide' => ['$ne' => true],
-            'authors.aoi' => ['$in' => [1, '1', true, 'true']]
+            'affiliated' => true,
         ];
     } elseif ($context == 'unit') {
         $base_group = false;
@@ -754,10 +754,10 @@ Route::get('/portfolio/(unit|person|project|topic)/([^/]*)/(publications|activit
 
         $filter = [
             'hide' => ['$ne' => true],
+            'affiliated' => true,
         ];
         if (!$base_group) {
             $child_ids = $Groups->getChildren($id);
-            $filter['authors.aoi'] = ['$in' => [1, '1', true, 'true']];
             $filter['$and'] = [[
                 '$or' => [
                     ['units' => ['$in' => $child_ids]],
@@ -772,7 +772,7 @@ Route::get('/portfolio/(unit|person|project|topic)/([^/]*)/(publications|activit
         $filter = [
             'projects' => $id,
             'hide' => ['$ne' => true],
-            'authors.aoi' => ['$in' => [1, '1', true, 'true']]
+            'affiliated' => true,
         ];
     } elseif ($context == 'person') {
         $id = DB::to_ObjectID($id);
@@ -1306,6 +1306,10 @@ Route::get('/portfolio/activity/([^/]*)', function ($id) {
             'name' => ($a['first'] ?? '') . ' ' . ($a['last'] ?? ''),
             'orcid' => $orcid
         ];
+    }
+
+    foreach ($doc['editors'] as $e){
+        if ($e['aoi']) $result['affiliated'] =  true;
     }
 
     $depts = [];
