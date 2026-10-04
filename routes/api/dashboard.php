@@ -2332,7 +2332,6 @@ Route::get('/api/command-palette/search', function () {
                 '_cp_contain_name' => [
                     '$cond' => [['$regexMatch' => ['input' => '$name', 'regex' => $rxContain, 'options' => 'i']], 1, 0]
                 ],
-
             ]
         ],
         [
@@ -2340,7 +2339,6 @@ Route::get('/api/command-palette/search', function () {
                 '_cp_score' => [
                     '$add' => [
                         ['$multiply' => ['$_cp_prefix_name', 50]],
-                        ['$multiply' => ['$_cp_syn_prefix', 25]],
                         ['$multiply' => ['$_cp_contain_name', 10]],
                     ]
                 ]
