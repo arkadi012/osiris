@@ -1050,7 +1050,7 @@ Route::post('/crud/admin/activity-fields', function () {
             continue;
         }
         $f = $field['id'];
-        if (isset($field['overrides']) && isset($field['overrides']['required']) && $field['overrides']['required']) {
+        if (!empty($field['props']['required'])) {
             $f .= '*';
         }
         $modules[] = $f;
