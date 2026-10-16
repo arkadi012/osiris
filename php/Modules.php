@@ -2343,11 +2343,13 @@ class Modules
                 <div class="data-module col-sm-<?= $width ?>" data-module="semester-select">
                     <label for="teaching-cat" class="floating-title"><?= lang('Fast select time', 'Schnellwahl Zeit') ?></label>
 
-                    <div class="btn-group d-flex">
-                        <button class="btn" type="button" onclick="selectSemester('SS', '<?= CURRENTYEAR - 1 ?>')">SS <?= CURRENTYEAR - 1 ?></button>
-                        <button class="btn" type="button" onclick="selectSemester('WS', '<?= CURRENTYEAR - 1 ?>')">WS <?= CURRENTYEAR - 1 ?></button>
-                        <button class="btn" type="button" onclick="selectSemester('SS', '<?= CURRENTYEAR ?>')">SS <?= CURRENTYEAR ?></button>
-                        <button class="btn" type="button" onclick="selectSemester('WS', '<?= CURRENTYEAR ?>')">WS <?= CURRENTYEAR ?></button>
+                    <div class="d-flex flex-wrap">
+                        <?php for ($semesterYear = 2024; $semesterYear <= CURRENTYEAR; $semesterYear++) { ?>
+                            <div class="btn-group mr-5 mb-5">
+                                <button class="btn" type="button" onclick="selectSemester('SS', '<?= $semesterYear ?>')">SS <?= $semesterYear ?></button>
+                                <button class="btn" type="button" onclick="selectSemester('WS', '<?= $semesterYear ?>')">WS <?= $semesterYear ?></button>
+                            </div>
+                        <?php } ?>
                     </div>
                     <script>
                         function selectSemester(sem, year) {
@@ -2367,21 +2369,11 @@ class Modules
                 break;
 
             case "event-select":
-                $events = $this->DB->db->conferences->find(
-                    [
-                        // 'end' => ['$lte' => date('Y-m-d', strtotime('+5 days'))]
-                    ],
-                    ['sort' => ['start' => -1], 'projection' => ['title' => 1, 'start' => 1, 'end' => 1, 'location' => 1, 'country' => 1]]
-                    // ['sort' => ['start' => -1], 'limit' => 10]
-                );
             ?>
 
                 <div class="data-module col-sm-12 d-flex" data-module="event-select">
-                    <!-- <label class="floating-title"></label> -->
-
-                    <!-- dropdown with scroll and search, onclick -->
                     <div class="dropdown" id="event-select-dropdown">
-                        <button id="event-select-button" class="btn primary" data-toggle="dropdown" type="button" id="dropdown-1" aria-haspopup="true" aria-expanded="false">
+                        <button id="event-select-button" class="btn primary" data-toggle="dropdown" type="button" aria-haspopup="true" aria-expanded="false">
                             <i class="ph ph-calendar-dots ph-2x mr-10"></i>
                             <span>
                                 <b><?= lang('Select event', 'Veranstaltung auswählen') ?></b>
@@ -2390,26 +2382,14 @@ class Modules
                             </span>
                             <i class="ph ph-caret-down ml-auto" aria-hidden="true"></i>
                         </button>
-                        <div class="dropdown-menu" aria-labelledby="dropdown-1">
+                        <div class="dropdown-menu" aria-labelledby="event-select-button">
                             <small class="text-muted">
                                 <i class="ph ph-info text-signal"></i>
                                 <?= $help ?>
                             </small>
-                            <input type="text" placeholder="<?= lang('Search event...', 'Veranstaltung suchen...') ?>" id="event-select-search" onkeyup="filterEvents();" class="form-control">
-
-                            <div class="events-content">
-                                <?php foreach ($events as $ev) { ?>
-                                    <a onclick="selectEvent('<?= $ev['_id'] ?>', '<?= e(addslashes($ev['title'])) ?>', '<?= $ev['start'] ?>', '<?= $ev['end'] ?>', '<?= e(addslashes($ev['location'] ?? '')) ?>', '<?= $ev['country'] ?? '' ?>'); return false;">
-                                        <strong><?= e($ev['title']) ?></strong><br>
-                                        <small class="text-muted">
-                                            <?= date('d.m.Y', strtotime($ev['start'])) ?> - <?= date('d.m.Y', strtotime($ev['end'])) ?>
-                                            <?php if (!empty($ev['location'])) { ?>
-                                                | <?= e($ev['location']) ?>
-                                            <?php } ?>
-                                        </small>
-                                    </a>
-                                <?php } ?>
-                            </div>
+                            <label for="event-select-search" class="sr-only"><?= lang('Search event', 'Veranstaltung suchen') ?></label>
+                            <input type="text" placeholder="<?= lang('Search event...', 'Veranstaltung suchen...') ?>" id="event-select-search" data-event-autocomplete="select" class="form-control">
+                            <small class="text-muted"><?= lang('Type a title to find an existing event.', 'Gib einen Titel ein, um eine vorhandene Veranstaltung zu finden.') ?></small>
                         </div>
                     </div>
                     <a href="#add-event" class="btn" id="add-event-button" data-toggle="tooltip" data-title="<?= lang('Add new event', 'Neue Veranstaltung hinzufügen') ?>">
@@ -2449,40 +2429,7 @@ class Modules
                             padding: 0.5rem;
                         }
 
-                        #event-select-dropdown .dropdown-menu a {
-                            display: block;
-                            padding: 0.5rem;
-                            text-decoration: none;
-                            color: var(--text-color);
-                            border-bottom: var(--border-width) solid var(--border-color);
-                        }
-
-                        #event-select-dropdown .dropdown-menu a:hover {
-                            background-color: var(--hover-bg-color);
-                        }
-
-                        #event-select-dropdown .dropdown-menu .events-content {
-                            max-height: 250px;
-                            overflow-y: auto;
-                        }
                     </style>
-                    <script>
-                        function filterEvents() {
-                            var input, filter, div, a, i, txtValue;
-                            input = document.getElementById("event-select-search");
-                            filter = input.value.toUpperCase();
-                            div = document.querySelector("#event-select-dropdown .events-content");
-                            a = div.getElementsByTagName("a");
-                            for (i = 0; i < a.length; i++) {
-                                txtValue = a[i].textContent || a[i].innerText;
-                                if (txtValue.toUpperCase().indexOf(filter) > -1) {
-                                    a[i].style.display = "";
-                                } else {
-                                    a[i].style.display = "none";
-                                }
-                            }
-                        }
-                    </script>
                 </div>
             <?php
                 break;
@@ -2983,54 +2930,24 @@ class Modules
                 break;
 
             case "conference":
+                $conferenceId = (string) ($this->form['conference_id'] ?? '');
+                $conference = empty($conferenceId) ? [] : $this->DB->getConnected('conference', $conferenceId);
             ?>
                 <div class="data-module floating-form col-sm-<?= $width ?>" data-module="conference">
-                    <input type="hidden" class="hidden" name="values[conference_id]" id="conference_id" value="<?= $this->val('conference_id', null) ?>">
-                    <input type="text" class="form-control" <?= $labelClass ?> name="values[conference]" id="conference" list="conference-list" placeholder="VAAM 2022" value="<?= $this->val('conference') ?>" oninput="resetConference()">
+                    <input type="hidden" class="hidden" name="values[conference_id]" id="conference_id" value="<?= e($conferenceId) ?>">
+                    <input type="text" class="form-control" <?= $labelClass ?> name="values[conference]" id="conference" placeholder="VAAM 2022" value="<?= $this->val('conference') ?>" data-event-autocomplete="conference" data-event-id="<?= e($conferenceId) ?>" data-event-title="<?= e($conference['title'] ?? $this->form['conference'] ?? '') ?>" data-event-title-full="<?= e($conference['title_full'] ?? '') ?>" aria-describedby="connected-conference">
                     <label for="conference" class="<?= $labelClass ?>"><?= $label ?></label>
-                    <p class="m-0 font-size-12 position-absolute text-primary" id="connected-conference">
+                    <p class="m-0 font-size-12 text-primary" id="connected-conference" aria-live="polite">
                         <?php
-                        if (!empty($this->form) && isset($this->form['conference_id'])) {
-                            $conference = $this->DB->getConnected('conference', $this->form['conference_id']);
-                            echo lang('Connected to ', 'Verknüpft mit ') . $conference['title'];
+                        if (!empty($conference)) {
+                            echo lang('Connected to ', 'Verknüpft mit ') . e($conference['title'] ?? '');
                         } else {
                             echo lang('No event connected', 'Kein Event verknüpft');
                         }
                         ?>
                     </p>
-                    <script>
-                        function resetConference() {
-                            // check if conference from datalist is selected
-                            var input = $('#conference').val()
-                            var option = $('#conference-list option').filter(function() {
-                                return $(this).val() === input;
-                            })
-                            if (option.length) {
-                                var id = option.data('id')
-                                $('#conference_id').val(id)
-                                $('#connected-conference').html(lang('Connected to ', 'Verknüpft mit ') + input)
-                                return
-                            }
-                            $('#conference_id').val('')
-                            $('#connected-conference').html(lang('No event connected', 'Kein Event verknüpft'))
-                        }
-
-                        function selectConference(el) {
-                            var id = $(el).data('id')
-                            $('#conference').val(el.innerHTML)
-                            $('#conference_id').val(id)
-                            $('#connected-conference').html(lang('Connected to ', 'Verknüpft mit ') + el.innerHTML)
-                        }
-                    </script>
                     <?= $this->render_help($help) ?>
                 </div>
-
-                <datalist id="conference-list">
-                    <?php
-                    foreach ($this->DB->db->conferences->find([]) as $c) { ?>
-                        <option data-id="<?= $c['_id'] ?>"><?= $c['title'] ?></option>
-                    <?php } ?>
-                </datalist>
             <?php
                 break;
 

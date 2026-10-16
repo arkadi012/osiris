@@ -1648,43 +1648,42 @@ function getDate(element) {
     return date
 }
 
-function selectEvent(id, event, start, end, location, country) {
-    console.log(country);
-    $('#conference_id').val(id)
-    $('#conference').val(event).addClass('is-valid')
-    $('#location').val(location).addClass('is-valid')
-    if ($('#date_start').length > 0)
-        $('#date_start').val(start).addClass('is-valid')
-    else if ($('#year').length > 0) {
-        var date_start = start.split('-')
-        $('#year').val(date_start[0]).addClass('is-valid')
-        $('#month').val(date_start.length > 1 ? date_start[1] : '').addClass('is-valid')
-        $('#day').val(date_start.length > 2 ? date_start[2] : '').addClass('is-valid')
+function selectEvent(id, event, start, end, location, country, titleFull = '') {
+    selectEvent.revision = (selectEvent.revision || 0) + 1;
+    const canonical = {
+        id: String(id), title: String(event || ''), title_full: String(titleFull || ''),
+        start: String(start || ''), end: String(end || ''),
+        location: String(location || ''), country: String(country || '')
+    };
+    $('#conference_id').val(canonical.id);
+    $('#conference').val(canonical.title).addClass('is-valid');
+    if (window.EventAutocomplete) {
+        window.EventAutocomplete.setSelection(document.getElementById('conference'), canonical);
     }
-    $('#date_end').val(end).addClass('is-valid')
-    // select country in dropdown
-    $('#country').val(country).addClass('is-valid')
-
-
-    $('#connected-conference').html(lang('Connected to ', 'Verknüpft mit ') + event)
-
-    if ($('#event-select-dropdown').length > 0) {
-        $('#event-select-dropdown').removeClass('show')
+    $('#location').val(canonical.location).addClass('is-valid');
+    if ($('#date_start').length > 0) {
+        $('#date_start').val(canonical.start).addClass('is-valid');
+    } else if ($('#year').length > 0) {
+        const dateStart = canonical.start.split('-');
+        $('#year').val(dateStart[0]).addClass('is-valid');
+        $('#month').val(dateStart.length > 1 ? dateStart[1] : '').addClass('is-valid');
+        $('#day').val(dateStart.length > 2 ? dateStart[2] : '').addClass('is-valid');
     }
-    toastSuccess(lang('Event "' + event + '" selected.', 'Veranstaltung "' + event + '" ausgewählt.'))
-
-    // remove is_valid after 3 seconds
+    $('#date_end').val(canonical.end).addClass('is-valid');
+    $('#country').val(canonical.country).addClass('is-valid');
+    $('#connected-conference').text(lang('Connected to ', 'Verknüpft mit ') + canonical.title);
+    $('#event-select-dropdown').removeClass('show');
+    $('#event-select-button').removeClass('active').attr('aria-expanded', 'false');
+    // Sticky alerts accept HTML, so keep user-provided titles out of their content.
+    toastSuccess(lang('Event selected.', 'Veranstaltung ausgewählt.'));
     setTimeout(function () {
-        $('#conference').removeClass('is-valid')
-        $('#location').removeClass('is-valid')
-        $('#date_start').removeClass('is-valid')
-        $('#date_end').removeClass('is-valid')
-        $('#country').removeClass('is-valid')
+        $('#conference, #location, #date_start, #date_end, #country').removeClass('is-valid');
     }, 3000);
 }
 
 function addEvent() {
-    var data = {
+    if (addEvent.pending) return;
+    const data = {
         title: $('#event-title').val(),
         title_full: $('#event-title_full').val(),
         start: $('#event-start').val(),
@@ -1693,55 +1692,85 @@ function addEvent() {
         country: $('#event-country').val(),
         type: $('#event-type').val(),
         url: $('#event-url').val()
-    }
-
-    // check for required
-    var valid = true;
-    ['title', 'start', 'end', 'location'].forEach(function (d) {
-        if (data[d] === '') {
-            $('#' + d).addClass('is-invalid')
-            valid = false
-        }
+    };
+    let valid = true;
+    ['title', 'start', 'location'].forEach(function (key) {
+        const missing = !String(data[key] || '').trim();
+        $('#event-' + key).toggleClass('is-invalid', missing);
+        if (missing) valid = false;
     });
     if (!valid) {
-        toastWarning(lang('Please fill out all required fields.', 'Bitte füllen Sie alle Pflichtfelder aus.'))
+        toastWarning(lang('Please fill out all required fields.', 'Bitte füllen Sie alle Pflichtfelder aus.'));
         return;
     }
+    const inputValues = Object.assign({}, data);
+    const selectionRevision = selectEvent.revision || 0;
+    const modalHash = window.location.hash;
+    const currentSelection = [$('#conference_id').val(), $('#conference').val()];
+    const stillCurrent = () => (selectEvent.revision || 0) === selectionRevision
+        && window.location.hash === modalHash
+        && currentSelection[0] === $('#conference_id').val() && currentSelection[1] === $('#conference').val()
+        && Object.keys(inputValues).every(key => $('#event-' + key).val() === inputValues[key]);
+    if ($('#event-attended').is(':checked')) data.participants = $('#event-attended').val();
 
-
-    if ($('#event-attended').is(':checked')) {
-        data['participants'] = $('#event-attended').val()
-    }
-
-    $.ajax({
-        type: "POST",
-        data: {
-            values: data
-        },
-        dataType: "json",
-        url: ROOTPATH + '/crud/conferences/add',
-        success: function (response) {
-            console.log(response);
-            if (response.id && response.status == 'warning') {
-                if (response.msg) toastWarning(response.msg)
-                selectEvent(response.id, data.title, data.start, data.end, data.location, data.country)
-                // close modal
-                window.location.hash = '#event-select'
-                return;
-            } else if (response.msg && response.status == 'error') {
-                toastWarning(response.msg)
-                return;
-            } else {
-                toastSuccess(lang('Event added successfully.', 'Veranstaltung erfolgreich hinzugefügt.'))
-                selectEvent(response.id, data.title, data.start, data.end, data.location, data.country)
-                // close modal
-                window.location.hash = '#event-select'
+    // Messages from the server may contain record titles. Toasts interpret HTML.
+    const safeMessage = message => String(message || '').replace(/[&<>"']/g, character => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[character]));
+    function submit(confirmed) {
+        addEvent.pending = true;
+        const payload = { values: data };
+        if (confirmed) payload.confirm_duplicate = '1';
+        $.ajax({
+            type: 'POST', data: payload, dataType: 'json',
+            url: ROOTPATH + '/crud/conferences/add',
+            success: function (response) {
+                addEvent.pending = false;
+                $('.loader').removeClass('show');
+                // The request may finish after the user chose another event or edited/closed the modal.
+                // A completed write remains saved, but must not overwrite that newer form state.
+                if (!stillCurrent()) {
+                    if (response.status === 'success') toastSuccess(lang('Event saved.', 'Veranstaltung gespeichert.'));
+                    return;
+                }
+                if (response.status === 'duplicate') {
+                    const matches = Array.isArray(response.matches) ? response.matches : [];
+                    if (window.EventAutocomplete) {
+                        window.EventAutocomplete.showMatches(document.getElementById('event-title'), matches);
+                    }
+                    const summary = matches.slice(0, 10).map(event =>
+                        [event.title, event.start, event.location].filter(Boolean).join(' · ')).join('\n');
+                    const message = lang('Similar events already exist:', 'Ähnliche Veranstaltungen sind bereits vorhanden:')
+                        + '\n\n' + summary + '\n\n' + lang(
+                            'Create a separate event anyway? Choose Cancel to select an existing event from the suggestions.',
+                            'Trotzdem eine eigene Veranstaltung anlegen? Mit Abbrechen kann eine vorhandene Veranstaltung aus den Vorschlägen gewählt werden.');
+                    if (window.confirm(message)) submit(true);
+                    return;
+                }
+                if (response.status === 'error') {
+                    toastWarning(safeMessage(response.msg) || lang('The event could not be saved.', 'Die Veranstaltung konnte nicht gespeichert werden.'));
+                    return;
+                }
+                // Both successful creation and exact-duplicate reuse return the saved canonical record.
+                const event = response.event;
+                if (!event || !/^[a-f\d]{24}$/i.test(event.id || '') || typeof event.title !== 'string') {
+                    toastError(lang('The saved event could not be loaded. Please select it using the event search.',
+                        'Die gespeicherte Veranstaltung konnte nicht geladen werden. Bitte über die Veranstaltungssuche auswählen.'));
+                    return;
+                }
+                if (response.status === 'warning' && response.msg) toastWarning(safeMessage(response.msg));
+                else toastSuccess(lang('Event added successfully.', 'Veranstaltung erfolgreich hinzugefügt.'));
+                selectEvent(event.id, event.title, event.start, event.end, event.location, event.country, event.title_full);
+                $('#add-event').removeClass('show');
+                window.location.hash = '#close-modal';
+            },
+            error: function (xhr) {
+                addEvent.pending = false;
+                $('.loader').removeClass('show');
+                const message = xhr && xhr.responseJSON && xhr.responseJSON.msg;
+                toastError(message ? safeMessage(message) : lang('The event could not be saved. Please try again.', 'Die Veranstaltung konnte nicht gespeichert werden. Bitte erneut versuchen.'));
             }
-            $('.loader').removeClass('show')
-        },
-        error: function (response) {
-            $('.loader').removeClass('show')
-            toastError(response.responseText)
-        }
-    })
+        });
+    }
+    submit(false);
 }

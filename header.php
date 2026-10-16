@@ -82,6 +82,7 @@ $pageactive = function ($p) use ($page) {
     <link href="<?= ROOTPATH ?>/css/fontello/css/osiris.css?v=<?= OSIRIS_BUILD ?>" rel="stylesheet" />
 
     <link rel="stylesheet" href="<?= ROOTPATH ?>/css/main.css?v=<?= OSIRIS_BUILD ?>">
+    <link rel="stylesheet" href="<?= ROOTPATH ?>/css/event-autocomplete.css?v=<?= OSIRIS_BUILD ?>">
     <?= $Settings->renderAdditionalStylesheetLinks() ?>
     <link rel="stylesheet" href="<?= ROOTPATH ?>/custom_style.css?v=<?= uniqid() ?>" no-cache>
 
@@ -150,6 +151,7 @@ $pageactive = function ($p) use ($page) {
         });
     </script>
     <script src="<?= ROOTPATH ?>/js/osiris.js?v=<?= OSIRIS_BUILD ?>"></script>
+    <script src="<?= ROOTPATH ?>/js/event-autocomplete.js?v=<?= OSIRIS_BUILD ?>"></script>
 
     <?php if (isset($additionalHead)) {
         echo $additionalHead;

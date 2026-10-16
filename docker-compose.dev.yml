@@ -16,7 +16,8 @@ services:
       - mongo
     environment:
       - COMPOSER_ALLOW_SUPERUSER=1
-      - OSIRIS_DB_HOST=mongo
+#     - OSIRIS_DB_HOST=mongo
+      - OSIRIS_DB_HOST=${OSIRIS_DB_HOST:-mongo}
       - OSIRIS_PORTFOLIO_API_URL=http://app
       - PHP_CLI_SERVER_WORKERS=4
     command: >

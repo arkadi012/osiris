@@ -14,6 +14,75 @@
  * @license     MIT
  */
 
+// This endpoint uses the same session-only access as the event CRUD routes.
+Route::get('/ajax/conferences/suggest', function () {
+    header('Content-Type: application/json; charset=utf-8');
+    header('Cache-Control: private, no-store');
+    header('X-Content-Type-Options: nosniff');
+    if (($_SESSION['loggedin'] ?? false) !== true || empty($_SESSION['username'])) {
+        http_response_code(401);
+        echo json_encode(['results' => [], 'error' => 'Authentication required.']);
+        return;
+    }
+
+    $query = $_GET['q'] ?? '';
+    $exclude = $_GET['exclude'] ?? null;
+    $limit = $_GET['limit'] ?? '10';
+    $start = $_GET['start'] ?? '';
+    $location = $_GET['location'] ?? '';
+    if (!is_string($query) || strlen($query) > 800 || preg_match('//u', $query) !== 1
+        || preg_match_all('/./us', $query) > 200
+        || ($exclude !== null && (!is_string($exclude) || !preg_match('/^[a-f0-9]{24}$/iD', $exclude)))
+        || !is_scalar($limit) || !preg_match('/^(?:[1-9]|10)$/D', (string)$limit)
+        || !is_string($start) || ($start !== '' && !conferenceDateIsValid($start))
+        || !is_string($location) || strlen($location) > 2000 || preg_match('//u', $location) !== 1
+        || preg_match_all('/./us', $location) > 500) {
+        http_response_code(400);
+        echo json_encode(['results' => [], 'error' => 'Invalid search parameters.']);
+        return;
+    }
+
+    include_once BASEPATH . '/php/init.php';
+    require_once BASEPATH . '/php/EventSearch.php';
+    // Do not serialize successive autocomplete requests behind the PHP session lock.
+    if (session_status() === PHP_SESSION_ACTIVE) session_write_close();
+    try {
+        $results = (new EventSearch($osiris->conferences))->search(
+            $query, (int)$limit, $exclude, ['start' => $start, 'location' => $location]
+        );
+        echo json_encode(['results' => $results], JSON_INVALID_UTF8_SUBSTITUTE);
+    } catch (Throwable $error) {
+        // A timed-out search must not look like an authoritative empty result.
+        http_response_code(503);
+        echo json_encode(['results' => [], 'error' => 'Event search is temporarily unavailable.']);
+    }
+}, 'login');
+
+function conferenceDateIsValid($value): bool
+{
+    if (!is_string($value) || !preg_match('/^(\d{4})-(\d{2})-(\d{2})$/D', $value, $parts)) return false;
+    return checkdate((int)$parts[2], (int)$parts[3], (int)$parts[1]);
+}
+
+/** Validate strings before they can become MongoDB query operands. */
+function conferenceValuesAreValid($values): bool
+{
+    if (!is_array($values)) return false;
+    foreach (['title', 'start', 'location'] as $field) {
+        if (!isset($values[$field]) || !is_string($values[$field]) || trim($values[$field]) === '') return false;
+    }
+    foreach (['title' => 2000, 'title_full' => 8000, 'location' => 2000, 'start' => 10, 'end' => 10,
+        'country' => 10, 'type' => 100, 'url' => 4000, 'participants' => 10000, 'interests' => 10000] as $field => $maxBytes) {
+        if (isset($values[$field]) && (!is_string($values[$field]) || strlen($values[$field]) > $maxBytes
+            || preg_match('//u', $values[$field]) !== 1)) return false;
+    }
+    foreach (['title' => 500, 'title_full' => 2000, 'location' => 500] as $field => $maxCharacters) {
+        if (isset($values[$field]) && preg_match_all('/./us', $values[$field]) > $maxCharacters) return false;
+    }
+    return conferenceDateIsValid($values['start'])
+        && (empty($values['end']) || (conferenceDateIsValid($values['end']) && $values['end'] >= $values['start']));
+}
+
 Route::get('/(conferences|deadlines)', function ($page) {
     include_once BASEPATH . "/php/init.php";
 
@@ -197,11 +266,12 @@ Route::get('/deadlines/edit/(.*)', function ($id) {
 
 Route::post('/crud/conferences/add', function () {
     include_once BASEPATH . "/php/init.php";
+    require_once BASEPATH . '/php/EventSearch.php';
     // check if json is requested from ajax
     $accept = $_SERVER['HTTP_ACCEPT'] ?? '';
     $accept_json = strpos($accept, 'application/json') !== false;
 
-    if (!isset($_POST['values'])) {
+    if (!isset($_POST['values']) || !is_array($_POST['values'])) {
         if ($accept_json) {
             header('Content-Type: application/json');
             echo json_encode(['status' => 'error', 'msg' => lang('No values provided.', 'Keine Werte angegeben.')]);
@@ -210,23 +280,25 @@ Route::post('/crud/conferences/add', function () {
         abortwith(500, lang('No values provided.', 'Keine Werte angegeben.'));
     }
     $values = $_POST['values'];
+    unset($values['_id'], $values['conference_id']);
 
     // required fields:
-    if (!isset($values['title']) || !isset($values['start']) || !isset($values['location'])) {
+    if (!conferenceValuesAreValid($values)) {
+        http_response_code(422);
         if ($accept_json) {
             header('Content-Type: application/json');
-            echo json_encode(['status' => 'error', 'msg' => lang('Title, Location, and Date are needed.', 'Titel, Ort und Datum sind erforderliche Felder.')]);
+            echo json_encode(['status' => 'error', 'msg' => lang('Provide a title, location and valid dates.', 'Bitte Titel, Ort und gültige Datumsangaben eingeben.')]);
             exit;
         }
         $new = true;
-        $form = $values;
+        $form = array_filter($values, 'is_string');
         include BASEPATH . "/header.php";
-        printMsg(lang('Title, Location, and Date are needed.', 'Titel, Ort und Datum sind erforderliche Felder.'), 'error', lang('Missing fields', 'Fehlende Daten'));
+        printMsg(lang('Provide a title, location and valid dates.', 'Bitte Titel, Ort und gültige Datumsangaben eingeben.'), 'error', lang('Invalid fields', 'Ungültige Daten'));
         include BASEPATH . "/pages/events/edit.php";
         include BASEPATH . "/footer.php";
         exit;
     }
-    // check if title, start, location are already in the database
+    // Preserve the existing exact title + start identity check.
     $existing = $osiris->conferences->findOne([
         'title' => $values['title'],
         'start' => $values['start']
@@ -234,11 +306,45 @@ Route::post('/crud/conferences/add', function () {
     if ($existing) {
         if ($accept_json) {
             header('Content-Type: application/json');
-            echo json_encode(['status' => 'warning', 'msg' => lang('An event with the same title and date already exists.', 'Ein Event mit dem gleichen Titel und Datum existiert bereits.'), 'id' => (string)$existing['_id']]);
+            echo json_encode(['status' => 'warning', 'msg' => lang('An event with the same title and date already exists.', 'Ein Event mit dem gleichen Titel und Datum existiert bereits.'), 'id' => (string)$existing['_id'], 'event' => EventSearch::eventData($existing)], JSON_INVALID_UTF8_SUBSTITUTE);
             exit;
         }
         $_SESSION['msg'] = lang('An event with the same title and date already exists.', 'Ein Event mit dem gleichen Titel und Datum existiert bereits.');
         header("Location: " . ROOTPATH . "/conferences/view/" . $existing['_id']);
+        exit;
+    }
+
+    try {
+        $duplicateMatches = (new EventSearch($osiris->conferences))->likelyDuplicates($values);
+    } catch (Throwable $error) {
+        http_response_code(503);
+        $message = lang('The duplicate check is temporarily unavailable. Your event has not been saved. Please try again.', 'Die Duplikatprüfung ist vorübergehend nicht verfügbar. Die Veranstaltung wurde nicht gespeichert. Bitte erneut versuchen.');
+        if ($accept_json) {
+            header('Content-Type: application/json');
+            echo json_encode(['status' => 'error', 'msg' => $message]);
+            exit;
+        }
+        $new = true;
+        $form = $values;
+        include BASEPATH . '/header.php';
+        printMsg($message, 'error');
+        include BASEPATH . '/pages/events/edit.php';
+        include BASEPATH . '/footer.php';
+        exit;
+    }
+    if ($duplicateMatches && ($_POST['confirm_duplicate'] ?? '') !== '1') {
+        $duplicateMessage = lang('Similar events already exist. Reuse an existing event or confirm that this is a distinct event.', 'Ähnliche Veranstaltungen sind bereits vorhanden. Verwende eine bestehende Veranstaltung oder bestätige, dass dies eine eigenständige Veranstaltung ist.');
+        if ($accept_json) {
+            header('Content-Type: application/json');
+            echo json_encode(['status' => 'duplicate', 'msg' => $duplicateMessage, 'matches' => $duplicateMatches], JSON_INVALID_UTF8_SUBSTITUTE);
+            exit;
+        }
+        $new = true;
+        $form = $values;
+        $exactDuplicate = false;
+        include BASEPATH . '/header.php';
+        include BASEPATH . '/pages/events/edit.php';
+        include BASEPATH . '/footer.php';
         exit;
     }
 
@@ -271,7 +377,7 @@ Route::post('/crud/conferences/add', function () {
 
     if (strpos($accept, 'application/json') !== false) {
         header('Content-Type: application/json');
-        echo json_encode(['status' => 'success', 'id' => (string)$id]);
+        echo json_encode(['status' => 'success', 'id' => (string)$id, 'event' => EventSearch::eventData(['_id' => $id] + $values)], JSON_INVALID_UTF8_SUBSTITUTE);
         exit;
     }
     $_SESSION['msg'] = lang('Event added successfully.', 'Veranstaltung erfolgreich hinzugefügt.');
@@ -282,8 +388,76 @@ Route::post('/crud/conferences/add', function () {
 
 Route::post('/crud/conferences/update/(.*)', function ($id) {
     include_once BASEPATH . "/php/init.php";
+    require_once BASEPATH . '/php/EventSearch.php';
 
-    $values = $_POST['values'];
+    if (!preg_match('/^[a-f0-9]{24}$/iD', $id)) {
+        abortwith(404, lang('Event', 'Veranstaltung'), '/conferences');
+    }
+    $record = $osiris->conferences->findOne(['_id' => DB::to_ObjectID($id)]);
+    if (!$record) abortwith(404, lang('Event', 'Veranstaltung'), '/conferences');
+    $values = $_POST['values'] ?? [];
+    $accept_json = strpos($_SERVER['HTTP_ACCEPT'] ?? '', 'application/json') !== false;
+    if (!conferenceValuesAreValid($values)) {
+        http_response_code(422);
+        $message = lang('Provide a title, location and valid dates.', 'Bitte Titel, Ort und gültige Datumsangaben eingeben.');
+        if ($accept_json) {
+            header('Content-Type: application/json');
+            echo json_encode(['status' => 'error', 'msg' => $message]);
+            exit;
+        }
+        $new = false;
+        $form = array_replace((array)$record, is_array($values) ? array_filter($values, 'is_string') : []);
+        $form['_id'] = $record['_id'];
+        include BASEPATH . '/header.php';
+        printMsg($message, 'error', lang('Invalid fields', 'Ungültige Daten'));
+        include BASEPATH . '/pages/events/edit.php';
+        include BASEPATH . '/footer.php';
+        exit;
+    }
+
+    $existing = $osiris->conferences->findOne([
+        '_id' => ['$ne' => $record['_id']], 'title' => $values['title'], 'start' => $values['start']
+    ]);
+    $exactDuplicate = (bool)$existing;
+    try {
+        $duplicateMatches = $existing ? [EventSearch::eventData($existing)]
+            : (new EventSearch($osiris->conferences))->likelyDuplicates($values, $id);
+    } catch (Throwable $error) {
+        http_response_code(503);
+        $message = lang('The duplicate check is temporarily unavailable. Your changes have not been saved. Please try again.', 'Die Duplikatprüfung ist vorübergehend nicht verfügbar. Die Änderungen wurden nicht gespeichert. Bitte erneut versuchen.');
+        if ($accept_json) {
+            header('Content-Type: application/json');
+            echo json_encode(['status' => 'error', 'msg' => $message]);
+            exit;
+        }
+        $new = false;
+        $form = array_replace((array)$record, $values);
+        $form['_id'] = $record['_id'];
+        include BASEPATH . '/header.php';
+        printMsg($message, 'error');
+        include BASEPATH . '/pages/events/edit.php';
+        include BASEPATH . '/footer.php';
+        exit;
+    }
+    if ($duplicateMatches && ($exactDuplicate || ($_POST['confirm_duplicate'] ?? '') !== '1')) {
+        $duplicateMessage = $exactDuplicate
+            ? lang('Another event has the same title and date. Change the title or date, or use the existing record.', 'Eine andere Veranstaltung hat denselben Titel und dasselbe Datum. Ändere Titel oder Datum oder verwende den vorhandenen Eintrag.')
+            : lang('Similar events already exist. Check the existing records or confirm that this is a distinct event.', 'Ähnliche Veranstaltungen sind bereits vorhanden. Prüfe die vorhandenen Einträge oder bestätige, dass dies eine eigenständige Veranstaltung ist.');
+        if ($accept_json) {
+            header('Content-Type: application/json');
+            echo json_encode(['status' => 'duplicate', 'exact' => $exactDuplicate, 'msg' => $duplicateMessage, 'matches' => $duplicateMatches], JSON_INVALID_UTF8_SUBSTITUTE);
+            exit;
+        }
+        $new = false;
+        $form = array_replace((array)$record, $values);
+        $form['_id'] = $record['_id'];
+        include BASEPATH . '/header.php';
+        include BASEPATH . '/pages/events/edit.php';
+        include BASEPATH . '/footer.php';
+        exit;
+    }
+    // Updating an event must never replace its ID or existing activity links.
+    unset($values['_id'], $values['activities'], $values['conference_id'], $values['created'], $values['created_by']);
     $redirect = false;
     if (isset($values['redirect'])) {
         $redirect = $values['redirect'];
@@ -304,6 +478,11 @@ Route::post('/crud/conferences/update/(.*)', function ($id) {
         ['$set' => $values]
     );
 
+    if ($accept_json) {
+        header('Content-Type: application/json');
+        echo json_encode(['status' => 'success', 'id' => $id, 'event' => EventSearch::eventData(array_replace((array)$record, $values))], JSON_INVALID_UTF8_SUBSTITUTE);
+        exit;
+    }
     $_SESSION['msg'] = lang('Event updated successfully.', 'Veranstaltung erfolgreich aktualisiert.');
     $_SESSION['msg_type'] = 'success';
     header("Location: " . ROOTPATH . "/conferences/view/$id");
