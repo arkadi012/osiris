@@ -1,0 +1,92 @@
+.form-help {
+    display: none;
+    position: absolute;
+    right: 1rem;
+    bottom: calc(100% - .5rem);
+    width: max-content;
+    max-width: min(28rem, calc(100% - 2rem));
+    box-sizing: border-box;
+    z-index: 10;
+    background: var(--signal-color-very-light);
+    border: var(--border-width) solid var(--signal-color);
+    border-radius: .5rem;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, .08);
+    padding: .5rem .75rem;
+    font-size: 1rem;
+    color: #374151;
+    overflow-wrap: anywhere;
+    /* Explanatory text must not intercept clicks on neighboring fields. */
+    pointer-events: none;
+}
+
+.form-help a,
+.form-help button,
+.form-help input,
+.form-help select,
+.form-help textarea,
+.form-help [tabindex],
+.form-help [contenteditable="true"] {
+    pointer-events: auto;
+}
+
+.data-module:focus-within .form-help:not(.form-help-dismissed),
+.data-module:hover .form-help:not(.form-help-dismissed) {
+    display: block;
+}
+
+.form-help::before,
+.form-help::after {
+    content: "";
+    position: absolute;
+    right: .75rem;
+    border: 6px solid transparent;
+}
+
+.form-help::before {
+    bottom: -13px;
+    border-top-color: var(--signal-color);
+}
+
+.form-help::after {
+    bottom: -11px;
+    border-top-color: var(--signal-color-very-light);
+}
+
+label.has-help::before {
+    content: "\E2CE";
+    font-family: var(--icon-font);
+    font-size: .85em;
+    margin-right: .4rem;
+    color: var(--signal-color);
+    cursor: help;
+}
+
+/* Reserve space when the tooltip would be clipped by the viewport or a scroller. */
+.form-help-wrap {
+    flex-wrap: wrap;
+}
+
+.form-help.form-help-inline {
+    position: static;
+    margin: .25rem 0 0 auto;
+    max-width: 100%;
+    flex-basis: 100%;
+}
+
+.form-help.form-help-inline::before,
+.form-help.form-help-inline::after {
+    display: none;
+}
+
+@media (max-width: 576px) {
+    .form-help {
+        position: static;
+        margin: .25rem 0 0 auto;
+        max-width: 100%;
+    }
+
+    .form-help::before,
+    .form-help::after {
+        display: none;
+    }
+}

@@ -71,6 +71,8 @@ function val($index, $default = '')
 }
 ?>
 
+<link rel="stylesheet" href="<?= ROOTPATH ?>/css/form-help.css?v=<?= OSIRIS_BUILD ?>">
+<script src="<?= ROOTPATH ?>/js/form-help.js?v=<?= OSIRIS_BUILD ?>"></script>
 <style>
     .custom-radio input#open_access:checked~label::before {
         background-color: var(--success-color);
@@ -85,71 +87,6 @@ function val($index, $default = '')
     .description {
         color: var(--secondary-color);
         font-style: italic;
-    }
-
-
-    .form-help {
-        display: none;
-        position: absolute;
-        left: 2rem;
-        /* in d-flex row sitzt es angenehm rechts */
-        top: 100%;
-        margin-top: -.75rem;
-        max-width: 28rem;
-        z-index: 10;
-        background: var(--signal-color-very-light);
-        border: var(--border-width) solid var(--signal-color);
-        border-radius: .5rem;
-        box-shadow: 0 6px 20px rgba(0, 0, 0, .08);
-        padding: .5rem .75rem;
-        font-size: 1rem;
-        color: #374151;
-    }
-
-    .data-module:focus-within .form-help,
-    .data-module:hover .form-help {
-        display: block;
-    }
-
-    /* kleine Pfeilspitze */
-    .form-help::before {
-        content: "";
-        position: absolute;
-        left: .75rem;
-        top: -13px;
-        border: 6px solid transparent;
-        border-bottom-color: var(--signal-color);
-    }
-
-    .form-help::after {
-        content: "";
-        position: absolute;
-        left: .75rem;
-        top: -11px;
-        border: 6px solid transparent;
-        border-bottom-color: var(--signal-color-very-light);
-    }
-
-    label.has-help::before {
-        content: "\E2CE";
-        font-family: var(--icon-font);
-        font-size: .85em;
-        margin-right: .4rem;
-        color: var(--signal-color);
-        cursor: help;
-    }
-
-    /* Mobile: Hilfe unter das Feld in den Fluss setzen */
-    @media (max-width: 576px) {
-        .form-help {
-            position: static;
-            display: none;
-            margin-top: .25rem;
-        }
-
-        .data-module:focus-within .form-help {
-            display: block;
-        }
     }
 </style>
 <?php include_once BASEPATH . '/header-editor.php'; ?>
