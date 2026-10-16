@@ -168,15 +168,16 @@ function val($index, $default = '')
                 <span aria-hidden="true">&times;</span>
             </a>
             <h5 class="title"><?= lang('Add event', 'Event hinzufügen') ?></h5>
-            <div id="content" id="new-event">
+            <div id="new-event">
 
                 <div class="form-group mb-10">
-                    <label for="title" class="required"><?= lang('(Short) Title', 'Kurztitel') ?></label>
-                    <input type="text" id="event-title" required class="form-control">
+                    <label for="event-title" class="required"><?= lang('(Short) Title', 'Kurztitel') ?></label>
+                    <input type="text" id="event-title" maxlength="500" required class="form-control" data-event-autocomplete="select" data-event-start="#event-start" data-event-location="#event-location" aria-describedby="event-title-help">
+                    <small id="event-title-help" class="text-muted"><?= lang('Select an existing event below to reuse its details.', 'Wähle unten eine vorhandene Veranstaltung, um ihre Daten zu übernehmen.') ?></small>
                 </div>
                 <div class="form-group mb-10">
-                    <label for="title"><?= lang('Full Title', 'Kompletter Titel') ?></label>
-                    <input type="text" id="event-title_full" class="form-control">
+                    <label for="event-title_full"><?= lang('Full Title', 'Kompletter Titel') ?></label>
+                    <input type="text" id="event-title_full" maxlength="2000" class="form-control">
                 </div>
 
                 <div class="form-group floating-form">
@@ -195,11 +196,11 @@ function val($index, $default = '')
 
                 <div class="form-row row-eq-spacing mb-10">
                     <div class="col">
-                        <label for="start" class="required"><?= lang('Start date', 'Anfangsdatum') ?></label>
+                        <label for="event-start" class="required"><?= lang('Start date', 'Anfangsdatum') ?></label>
                         <input type="date" id="event-start" required class="form-control" onchange="$('#event-end').val(this.value)">
                     </div>
                     <div class="col">
-                        <label for="end" class="required"><?= lang('End date', 'Enddatum') ?></label>
+                        <label for="event-end" class="required"><?= lang('End date', 'Enddatum') ?></label>
                         <input type="date" id="event-end" class="form-control">
                     </div>
                 </div>
@@ -207,7 +208,7 @@ function val($index, $default = '')
                 <div class="form-row row-eq-spacing">
                     <div class="col">
                         <label for="event-location" class="required"><?= lang('Location', 'Ort') ?></label>
-                        <input type="text" required class="form-control" value="<?= $form['location'] ?? '' ?>" id="event-location">
+                        <input type="text" required class="form-control" value="<?= e($form['location'] ?? '') ?>" id="event-location" maxlength="500">
                     </div>
                     <div class="col">
                         <label for="event-country"><?= lang('Country', 'Land') ?></label>
@@ -224,12 +225,12 @@ function val($index, $default = '')
                 </div>
 
                 <div class="form-group mb-10">
-                    <label for="url"><?= lang('URL', 'URL') ?></label>
+                    <label for="event-url"><?= lang('URL', 'URL') ?></label>
                     <input type="url" id="event-url" class="form-control">
                 </div>
 
                 <div class="custom-checkbox">
-                    <input type="checkbox" id="event-attended" value="<?= $_SESSION['username'] ?>">
+                    <input type="checkbox" id="event-attended" value="<?= e($_SESSION['username']) ?>">
                     <label for="event-attended" class="blank"><?= lang('I have attended', 'Ich habe teilgenommen') ?></label>
                 </div>
 

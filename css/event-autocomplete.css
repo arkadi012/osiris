@@ -1,0 +1,55 @@
+.event-autocomplete {
+    margin-top: .5rem;
+    border: var(--border-width) solid var(--border-color);
+    border-radius: var(--border-radius);
+    background: var(--box-bg-color);
+    color: var(--text-color);
+    box-shadow: var(--box-shadow);
+}
+
+.event-autocomplete[hidden] {
+    display: none;
+}
+
+.event-autocomplete-status {
+    padding: .5rem .75rem;
+    font-size: 1.2rem;
+}
+
+.event-autocomplete-list {
+    max-height: 28rem;
+    overflow-y: auto;
+}
+
+.event-autocomplete .event-autocomplete-option {
+    display: block;
+    width: 100%;
+    padding: .75rem;
+    margin: 0;
+    text-align: left;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    border: 0;
+    border-top: var(--border-width) solid var(--border-color);
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-decoration: none;
+    cursor: pointer;
+}
+
+.event-autocomplete-option > * {
+    display: block;
+}
+
+.event-autocomplete .event-autocomplete-option:hover,
+.event-autocomplete .event-autocomplete-option[aria-selected="true"] {
+    background: var(--primary-color-10);
+    outline: 1px solid var(--primary-color);
+    outline-offset: -1px;
+}
+
+/* Leave room for the activity's existing connection label. */
+.floating-form > .event-autocomplete {
+    margin-top: 2rem;
+}

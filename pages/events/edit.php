@@ -17,7 +17,7 @@ if (!empty($form ?? []) && isset($form['_id'])) {
 
     <h1>
         <i class="ph-duotone ph-calendar-plus"></i>
-        <?= lang('Add event', 'Event hinzufügen') ?>
+        <?= $btn ?>
     </h1>
 
     <blockquote>
@@ -31,13 +31,47 @@ if (!empty($form ?? []) && isset($form['_id'])) {
 
     <form action="<?= $action ?>" method="post" id="conference-form">
 
+        <?php if (!empty($duplicateMatches ?? [])) { ?>
+            <div class="alert signal mb-20" role="alert">
+                <strong><?= e($duplicateMessage ?? lang('Similar events already exist. Please check these records before continuing.', 'Ähnliche Veranstaltungen sind bereits vorhanden. Bitte prüfe diese Einträge, bevor du fortfährst.')) ?></strong>
+                <ul>
+                    <?php foreach ($duplicateMatches as $duplicate) { ?>
+                        <li>
+                            <a href="<?= ROOTPATH ?>/conferences/view/<?= e($duplicate['id'] ?? $duplicate['_id'] ?? '') ?>" target="_blank" rel="noopener">
+                                <?= e($duplicate['title'] ?? '') ?>
+                            </a>
+                            <?php if (!empty($duplicate['title_full'])) { ?>
+                                <span><?= e($duplicate['title_full']) ?></span>
+                            <?php } ?>
+                            <small class="text-muted">
+                                <?= e($duplicate['start'] ?? '') ?>
+                                <?php if (!empty($duplicate['end']) && $duplicate['end'] !== ($duplicate['start'] ?? '')) { ?>
+                                    – <?= e($duplicate['end']) ?>
+                                <?php } ?>
+                                <?php if (!empty($duplicate['location'])) { ?>
+                                    | <?= e($duplicate['location']) ?>
+                                <?php } ?>
+                            </small>
+                        </li>
+                    <?php } ?>
+                </ul>
+                <?php if (empty($exactDuplicate)) { ?>
+                    <div class="custom-checkbox">
+                        <input type="checkbox" id="confirm-duplicate" name="confirm_duplicate" value="1" required>
+                        <label for="confirm-duplicate"><?= lang('I have checked these records. This is a distinct event.', 'Ich habe diese Einträge geprüft. Dies ist eine eigenständige Veranstaltung.') ?></label>
+                    </div>
+                <?php } ?>
+            </div>
+        <?php } ?>
+
         <div class="form-group floating-form">
-            <input type="text" name="values[title]" required class="form-control" value="<?= e($form['title'] ?? '') ?>" placeholder="title">
+            <input type="text" name="values[title]" id="title" maxlength="500" required class="form-control" value="<?= e($form['title'] ?? '') ?>" placeholder="title" data-event-autocomplete="link" data-event-exclude="<?= e($form['_id'] ?? '') ?>" data-event-start="#start" data-event-location="#location" aria-describedby="event-reuse-help">
             <label for="title" class="required"><?= lang('(Short) Title', 'Kurztitel') ?></label>
+            <small class="text-muted" id="event-reuse-help"><?= lang('Check existing events below to avoid duplicates. You can still create a distinct event with a similar title.', 'Prüfe die vorhandenen Veranstaltungen unten, um Duplikate zu vermeiden. Du kannst weiterhin eine eigenständige Veranstaltung mit ähnlichem Titel anlegen.') ?></small>
         </div>
         <div class="form-group floating-form">
-            <input type="text" name="values[title_full]" class="form-control" value="<?= e($form['title_full'] ?? '') ?>" placeholder="title_full">
-            <label for="title"><?= lang('Full Title', 'Kompletter Titel') ?></label>
+            <input type="text" name="values[title_full]" id="title_full" maxlength="2000" class="form-control" value="<?= e($form['title_full'] ?? '') ?>" placeholder="title_full">
+            <label for="title_full"><?= lang('Full Title', 'Kompletter Titel') ?></label>
         </div>
 
         <div class="form-group floating-form">
@@ -67,19 +101,19 @@ if (!empty($form ?? []) && isset($form['_id'])) {
 
         <div class="form-row row-eq-spacing">
             <div class="col floating-form">
-                <input type="date" name="values[start]" required class="form-control" onchange="$('#conference-end-date').val(this.value)" value="<?= $form['start'] ?? '' ?>" placeholder="start">
+                <input type="date" name="values[start]" id="start" required class="form-control" onchange="$('#conference-end-date').val(this.value)" value="<?= e($form['start'] ?? '') ?>" placeholder="start">
                 <label for="start" class="required"><?= lang('Start date', 'Anfangsdatum') ?></label>
             </div>
             <div class="col floating-form">
-                <input type="date" name="values[end]" class="form-control" id="conference-end-date" value="<?= $form['end'] ?? '' ?>" placeholder="end">
-                <label for="end" class="required"><?= lang('End date', 'Enddatum') ?></label>
+                <input type="date" name="values[end]" class="form-control" id="conference-end-date" value="<?= e($form['end'] ?? '') ?>" placeholder="end">
+                <label for="conference-end-date" class="required"><?= lang('End date', 'Enddatum') ?></label>
             </div>
         </div>
 
 
         <div class="form-row row-eq-spacing">
             <div class="col floating-form">
-                <input type="text" name="values[location]" required class="form-control" value="<?= e($form['location'] ?? '') ?>" placeholder="location">
+                <input type="text" name="values[location]" id="location" maxlength="500" required class="form-control" value="<?= e($form['location'] ?? '') ?>" placeholder="location">
                 <label for="location" class="required"><?= lang('Location', 'Ort') ?></label>
             </div>
             <div class="col floating-form">
